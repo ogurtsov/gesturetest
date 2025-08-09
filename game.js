@@ -45,14 +45,27 @@ class LabyrinthGame extends Phaser.Scene {
         this.isMoving = false;
         this.targetX = 1;
         this.targetY = 1;
+        
+        // Sound properties
+        this.footstepSounds = [];
+        this.lastFootstep = 'right'; // Track which foot stepped last
+        this.footstepDistance = 0; // Track distance for footstep timing
+        this.footstepThreshold = 25; // Distance threshold for each footstep
     }
 
     preload() {
-        // No assets needed - we'll use Phaser's built-in graphics
-        // This ensures immediate rendering without waiting for asset loads
+        // Set up error handling for missing audio files
+        this.load.on('loaderror', (file) => {
+            console.warn(`Could not load audio file: ${file.src}`);
+        });
+        
+        // Load footstep sounds using actual asset files
+        this.load.audio('footstep-left', 'assets/25_orc_walk_stone_1.wav');
+        this.load.audio('footstep-right', 'assets/25_orc_walk_stone_2.wav');
     }
 
     create() {
+        console.log('Creating game scene...');
         // Force reset all game state
         this.gameWon = false;
         this.score = 0;
@@ -83,6 +96,9 @@ class LabyrinthGame extends Phaser.Scene {
         
         // Spawn the first ghost
         this.spawnGhost();
+        
+        // Set up sounds
+        this.setupSounds();
         
         // Set up controls (recreate to ensure clean state)
         this.cursors = this.input.keyboard.createCursorKeys();
@@ -242,6 +258,47 @@ class LabyrinthGame extends Phaser.Scene {
         this.goal.setStrokeStyle(2, 0x00cc00);
     }
 
+    setupSounds() {
+        // Initialize footstep sounds
+        try {
+            this.footstepSounds.left = this.sound.add('footstep-left', { volume: 0.5 });
+            this.footstepSounds.right = this.sound.add('footstep-right', { volume: 0.5 });
+        } catch (error) {
+            console.warn('Could not load footstep sounds:', error);
+            // Create silent placeholder sounds if audio files don't exist
+            this.footstepSounds.left = null;
+            this.footstepSounds.right = null;
+        }
+        
+        // Reset footstep tracking
+        this.footstepDistance = 0;
+        this.lastFootstep = 'right';
+    }
+
+    handleFootsteps(distance) {
+        // Accumulate distance traveled
+        this.footstepDistance += distance;
+        
+        // Check if we've traveled far enough for a footstep
+        if (this.footstepDistance >= this.footstepThreshold) {
+            this.playFootstepSound();
+            this.footstepDistance = 0; // Reset distance counter
+        }
+    }
+
+    playFootstepSound() {
+        // Alternate between left and right footsteps
+        const currentFoot = this.lastFootstep === 'left' ? 'right' : 'left';
+        
+        // Play the sound if available
+        if (this.footstepSounds[currentFoot]) {
+            this.footstepSounds[currentFoot].play();
+        }
+        
+        // Update which foot stepped last
+        this.lastFootstep = currentFoot;
+    }
+
     spawnGhost() {
         if (this.ghosts.length >= this.maxGhosts) return;
 
@@ -343,6 +400,10 @@ class LabyrinthGame extends Phaser.Scene {
         let newPixelX = this.player.x + velocityX * moveDistance;
         let newPixelY = this.player.y + velocityY * moveDistance;
 
+        // Store old position for movement detection
+        const oldX = this.player.x;
+        const oldY = this.player.y;
+        
         // Try moving on both axes
         if (this.canMoveToPixel(newPixelX, newPixelY)) {
             // Can move to the target position
@@ -357,6 +418,15 @@ class LabyrinthGame extends Phaser.Scene {
             else if (velocityY !== 0 && this.canMoveToPixel(this.player.x, this.player.y + velocityY * moveDistance)) {
                 this.player.y += velocityY * moveDistance;
             }
+        }
+        
+        // Handle footstep sounds if player moved
+        const actualDistance = Math.sqrt(
+            Math.pow(this.player.x - oldX, 2) + Math.pow(this.player.y - oldY, 2)
+        );
+        
+        if (actualDistance > 0) {
+            this.handleFootsteps(actualDistance);
         }
 
         // Update maze coordinates for win condition checking
@@ -597,6 +667,7 @@ class LabyrinthGame extends Phaser.Scene {
         
         // Restart after 30 seconds
         this.time.delayedCall(30000, () => {
+            console.log('30 seconds elapsed, restarting game...');
             // Force a complete scene restart
             this.scene.restart();
         });
