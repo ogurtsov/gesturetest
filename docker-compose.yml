@@ -3,7 +3,7 @@ services:
     build: .
     container_name: gesture-labyrinth
     ports:
-      - "8575:80"
+      - "8575:8575"
     restart: unless-stopped
 
 
