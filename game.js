@@ -23,8 +23,6 @@ class LabyrinthGame extends Phaser.Scene {
         this.player = null;
         this.goal = null;
         this.walls = null;
-        this.cursors = null;
-        this.wasdKeys = null;
         
         // Ghost system
         this.ghosts = [];
@@ -115,15 +113,8 @@ class LabyrinthGame extends Phaser.Scene {
         // Set up MediaPipe motion tracking
         this.setupMediaPipe();
         
-        // Set up controls (recreate to ensure clean state)
-        this.cursors = this.input.keyboard.createCursorKeys();
-        this.wasdKeys = this.input.keyboard.addKeys('W,S,A,D');
-        
-        // Ensure all keys are in released state
-        this.input.keyboard.resetKeys();
-        
-        // Enable audio on first user interaction
-        this.input.keyboard.on('keydown', () => {
+        // Enable audio on first user interaction (click anywhere)
+        this.input.on('pointerdown', () => {
             if (this.backgroundMusic && !this.backgroundMusic.isPlaying) {
                 this.backgroundMusic.play();
             }
@@ -179,59 +170,115 @@ class LabyrinthGame extends Phaser.Scene {
             }
         }
 
-        // Recursive backtracking algorithm
-        const stack = [];
+        // Prim's algorithm - creates more open mazes with multiple paths
+        const walls = [];
         const startX = 1;
         const startY = 1;
         
-        this.maze[startY][startX] = 0; // Start position is a path
-        stack.push({ x: startX, y: startY });
+        // Start with initial cell
+        this.maze[startY][startX] = 0;
+        this.addWallsToList(startX, startY, walls);
 
-        while (stack.length > 0) {
-            const current = stack[stack.length - 1];
-            const neighbors = this.getUnvisitedNeighbors(current.x, current.y);
+        while (walls.length > 0) {
+            // Pick a random wall from the list
+            const randomIndex = Math.floor(Math.random() * walls.length);
+            const wall = walls[randomIndex];
+            walls.splice(randomIndex, 1);
 
-            if (neighbors.length > 0) {
-                // Choose a random neighbor
-                const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+            // Get the two cells separated by this wall
+            const [cell1, cell2] = this.getCellsAroundWall(wall);
+            
+            // If only one of the cells is part of the maze, add the wall to the maze
+            if (cell1 && cell2) {
+                const cell1InMaze = this.maze[cell1.y][cell1.x] === 0;
+                const cell2InMaze = this.maze[cell2.y][cell2.x] === 0;
                 
-                // Remove wall between current and next
-                const wallX = current.x + (next.x - current.x) / 2;
-                const wallY = current.y + (next.y - current.y) / 2;
-                this.maze[wallY][wallX] = 0;
-                this.maze[next.y][next.x] = 0;
-                
-                stack.push(next);
-            } else {
-                stack.pop();
+                if (cell1InMaze !== cell2InMaze) {
+                    // Make the wall a passage
+                    this.maze[wall.y][wall.x] = 0;
+                    
+                    // Add the new cell to the maze
+                    const newCell = cell1InMaze ? cell2 : cell1;
+                    this.maze[newCell.y][newCell.x] = 0;
+                    
+                    // Add the walls of the new cell to the wall list
+                    this.addWallsToList(newCell.x, newCell.y, walls);
+                }
             }
         }
+
+        // Add some extra connections for better escape routes (10% chance per wall)
+        this.addExtraConnections(0.1);
 
         // Ensure goal position is accessible
         this.maze[this.goalY][this.goalX] = 0;
     }
 
-    getUnvisitedNeighbors(x, y) {
-        const neighbors = [];
+    addWallsToList(x, y, walls) {
+        // Add surrounding walls to the wall list
         const directions = [
-            { x: 0, y: -2 }, // Up
-            { x: 2, y: 0 },  // Right
-            { x: 0, y: 2 },  // Down
-            { x: -2, y: 0 }  // Left
+            { x: 0, y: -1 }, // Up
+            { x: 1, y: 0 },  // Right
+            { x: 0, y: 1 },  // Down
+            { x: -1, y: 0 }  // Left
         ];
 
         for (const dir of directions) {
-            const newX = x + dir.x;
-            const newY = y + dir.y;
+            const wallX = x + dir.x;
+            const wallY = y + dir.y;
 
-            if (newX > 0 && newX < this.mazeWidth - 1 && 
-                newY > 0 && newY < this.mazeHeight - 1 && 
-                this.maze[newY][newX] === 1) {
-                neighbors.push({ x: newX, y: newY });
+            if (wallX > 0 && wallX < this.mazeWidth - 1 && 
+                wallY > 0 && wallY < this.mazeHeight - 1 && 
+                this.maze[wallY][wallX] === 1) {
+                // Check if this wall isn't already in the list
+                if (!walls.some(w => w.x === wallX && w.y === wallY)) {
+                    walls.push({ x: wallX, y: wallY });
+                }
             }
         }
+    }
 
-        return neighbors;
+    getCellsAroundWall(wall) {
+        // Get the two cells that this wall separates
+        const cells = [];
+        
+        // Check if wall is horizontal or vertical
+        if (wall.x % 2 === 0) {
+            // Vertical wall
+            cells.push({ x: wall.x - 1, y: wall.y });
+            cells.push({ x: wall.x + 1, y: wall.y });
+        } else {
+            // Horizontal wall
+            cells.push({ x: wall.x, y: wall.y - 1 });
+            cells.push({ x: wall.x, y: wall.y + 1 });
+        }
+
+        // Filter out invalid cells
+        return cells.filter(cell => 
+            cell.x > 0 && cell.x < this.mazeWidth - 1 &&
+            cell.y > 0 && cell.y < this.mazeHeight - 1
+        );
+    }
+
+    addExtraConnections(probability) {
+        // Add extra passages to create loops and alternative routes
+        for (let y = 2; y < this.mazeHeight - 2; y += 2) {
+            for (let x = 2; x < this.mazeWidth - 2; x += 2) {
+                // Check horizontal connection
+                if (Math.random() < probability && x + 2 < this.mazeWidth - 1) {
+                    if (this.maze[y][x] === 0 && this.maze[y][x + 2] === 0) {
+                        this.maze[y][x + 1] = 0;
+                    }
+                }
+                
+                // Check vertical connection
+                if (Math.random() < probability && y + 2 < this.mazeHeight - 1) {
+                    if (this.maze[y][x] === 0 && this.maze[y + 2][x] === 0) {
+                        this.maze[y + 1][x] = 0;
+                    }
+                }
+            }
+        }
     }
 
     createMazeVisuals() {
@@ -515,30 +562,12 @@ class LabyrinthGame extends Phaser.Scene {
     }
 
     handleMovement(delta) {
-        // Get keyboard input state
-        const leftPressed = this.cursors.left.isDown || this.wasdKeys.A.isDown;
-        const rightPressed = this.cursors.right.isDown || this.wasdKeys.D.isDown;
-        const upPressed = this.cursors.up.isDown || this.wasdKeys.W.isDown;
-        const downPressed = this.cursors.down.isDown || this.wasdKeys.S.isDown;
-
-        // Get motion control input
+        // Pure motion control - no boring keyboard input!
         const motionInput = this.getMotionControlInput();
 
-        // Calculate movement vector (combine keyboard and motion input)
-        let velocityX = 0;
-        let velocityY = 0;
-
-        // Keyboard input
-        if (leftPressed && !rightPressed) velocityX = -1;
-        if (rightPressed && !leftPressed) velocityX = 1;
-        if (upPressed && !downPressed) velocityY = -1;
-        if (downPressed && !upPressed) velocityY = 1;
-
-        // Motion input (additive with keyboard, but motion takes priority if present)
-        if (Math.abs(motionInput.x) > 0 || Math.abs(motionInput.y) > 0) {
-            velocityX = motionInput.x;
-            velocityY = motionInput.y;
-        }
+        // Calculate movement vector from hand gestures only
+        let velocityX = motionInput.x;
+        let velocityY = motionInput.y;
 
         // Normalize diagonal movement
         if (velocityX !== 0 && velocityY !== 0) {
