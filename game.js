@@ -51,6 +51,7 @@ class LabyrinthGame extends Phaser.Scene {
         this.lastFootstep = 'right'; // Track which foot stepped last
         this.footstepDistance = 0; // Track distance for footstep timing
         this.footstepThreshold = 25; // Distance threshold for each footstep
+        this.backgroundMusic = null;
     }
 
     preload() {
@@ -62,6 +63,9 @@ class LabyrinthGame extends Phaser.Scene {
         // Load footstep sounds using actual asset files
         this.load.audio('footstep-left', 'assets/25_orc_walk_stone_1.wav');
         this.load.audio('footstep-right', 'assets/25_orc_walk_stone_2.wav');
+        
+        // Load background music
+        this.load.audio('background-music', 'assets/goblins_den_regular.wav');
     }
 
     create() {
@@ -106,6 +110,13 @@ class LabyrinthGame extends Phaser.Scene {
         
         // Ensure all keys are in released state
         this.input.keyboard.resetKeys();
+        
+        // Enable audio on first user interaction
+        this.input.keyboard.on('keydown', () => {
+            if (this.backgroundMusic && !this.backgroundMusic.isPlaying) {
+                this.backgroundMusic.play();
+            }
+        }, this);
         
         // Set start time (for internal tracking)
         this.gameStartTime = Date.now();
@@ -268,6 +279,19 @@ class LabyrinthGame extends Phaser.Scene {
             // Create silent placeholder sounds if audio files don't exist
             this.footstepSounds.left = null;
             this.footstepSounds.right = null;
+        }
+        
+        // Initialize background music
+        try {
+            this.backgroundMusic = this.sound.add('background-music', { 
+                volume: 0.3,
+                loop: true 
+            });
+            // Start playing background music
+            this.backgroundMusic.play();
+        } catch (error) {
+            console.warn('Could not load background music:', error);
+            this.backgroundMusic = null;
         }
         
         // Reset footstep tracking
@@ -730,6 +754,11 @@ class LabyrinthGame extends Phaser.Scene {
         
         // Spawn first ghost
         this.spawnGhost();
+        
+        // Restart background music if it exists
+        if (this.backgroundMusic && !this.backgroundMusic.isPlaying) {
+            this.backgroundMusic.play();
+        }
         
         // Reset timers
         this.gameStartTime = Date.now();
