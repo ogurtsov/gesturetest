@@ -52,6 +52,14 @@ class LabyrinthGame extends Phaser.Scene {
         this.footstepDistance = 0; // Track distance for footstep timing
         this.footstepThreshold = 25; // Distance threshold for each footstep
         this.backgroundMusic = null;
+        
+        // MediaPipe tracking properties
+        this.holistic = null;
+        this.camera = null;
+        this.facePosition = { x: 0.5, y: 0.5 }; // Normalized coordinates
+        this.rightPalmPosition = { x: 0.5, y: 0.5 }; // Normalized coordinates
+        this.motionControlEnabled = false;
+        this.motionSensitivity = 2.0; // Multiplier for motion control sensitivity
     }
 
     preload() {
@@ -103,6 +111,9 @@ class LabyrinthGame extends Phaser.Scene {
         
         // Set up sounds
         this.setupSounds();
+        
+        // Set up MediaPipe motion tracking
+        this.setupMediaPipe();
         
         // Set up controls (recreate to ensure clean state)
         this.cursors = this.input.keyboard.createCursorKeys();
@@ -323,6 +334,113 @@ class LabyrinthGame extends Phaser.Scene {
         this.lastFootstep = currentFoot;
     }
 
+    setupMediaPipe() {
+        // Check if MediaPipe is available
+        if (typeof Holistic === 'undefined') {
+            console.warn('MediaPipe Holistic not available. Motion controls disabled.');
+            document.getElementById('motion-indicator').textContent = 'Unavailable';
+            document.getElementById('motion-indicator').style.color = '#ffaa00';
+            return;
+        }
+
+        try {
+            // Initialize Holistic model
+            this.holistic = new Holistic({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`;
+                }
+            });
+
+            // Configure Holistic
+            this.holistic.setOptions({
+                modelComplexity: 1,
+                smoothLandmarks: true,
+                enableSegmentation: false,
+                smoothSegmentation: false,
+                refineFaceLandmarks: false,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            // Set up result handler
+            this.holistic.onResults((results) => {
+                this.onMediaPipeResults(results);
+            });
+
+            // Set up camera
+            const videoElement = document.getElementById('input_video');
+            this.camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    if (this.holistic) {
+                        await this.holistic.send({ image: videoElement });
+                    }
+                },
+                width: 640,
+                height: 480
+            });
+
+            // Start camera
+            this.camera.start();
+            this.motionControlEnabled = true;
+            console.log('MediaPipe motion tracking initialized successfully');
+            
+            // Update UI indicator
+            document.getElementById('motion-indicator').textContent = 'Active';
+            document.getElementById('motion-indicator').style.color = '#00ff00';
+
+        } catch (error) {
+            console.warn('Failed to initialize MediaPipe:', error);
+            this.motionControlEnabled = false;
+            
+            // Update UI indicator
+            document.getElementById('motion-indicator').textContent = 'Failed';
+            document.getElementById('motion-indicator').style.color = '#ff0000';
+        }
+    }
+
+    onMediaPipeResults(results) {
+        // Track face position (nose tip)
+        if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+            // Use nose tip (landmark index 1) for face center
+            const noseTip = results.faceLandmarks[1];
+            this.facePosition = {
+                x: noseTip.x,
+                y: noseTip.y
+            };
+        }
+
+        // Track right hand palm position
+        if (results.rightHandLandmarks && results.rightHandLandmarks.length > 0) {
+            // Use wrist (landmark index 0) as palm center
+            const palm = results.rightHandLandmarks[0];
+            this.rightPalmPosition = {
+                x: palm.x,
+                y: palm.y
+            };
+        }
+    }
+
+    getMotionControlInput() {
+        if (!this.motionControlEnabled) {
+            return { x: 0, y: 0 };
+        }
+
+        // Calculate relative position of palm to face
+        // Invert X-axis to match natural movement (mirror effect correction)
+        const deltaX = -(this.rightPalmPosition.x - this.facePosition.x) * this.motionSensitivity;
+        const deltaY = (this.rightPalmPosition.y - this.facePosition.y) * this.motionSensitivity;
+
+        // Apply deadzone to prevent jitter
+        const deadzone = 0.1;
+        const clampedX = Math.abs(deltaX) > deadzone ? deltaX : 0;
+        const clampedY = Math.abs(deltaY) > deadzone ? deltaY : 0;
+
+        return {
+            x: Math.max(-1, Math.min(1, clampedX)), // Clamp to [-1, 1]
+            y: Math.max(-1, Math.min(1, clampedY))  // Clamp to [-1, 1]
+        };
+    }
+
     spawnGhost() {
         if (this.ghosts.length >= this.maxGhosts) return;
 
@@ -397,20 +515,30 @@ class LabyrinthGame extends Phaser.Scene {
     }
 
     handleMovement(delta) {
-        // Get current input state
+        // Get keyboard input state
         const leftPressed = this.cursors.left.isDown || this.wasdKeys.A.isDown;
         const rightPressed = this.cursors.right.isDown || this.wasdKeys.D.isDown;
         const upPressed = this.cursors.up.isDown || this.wasdKeys.W.isDown;
         const downPressed = this.cursors.down.isDown || this.wasdKeys.S.isDown;
 
-        // Calculate movement vector
+        // Get motion control input
+        const motionInput = this.getMotionControlInput();
+
+        // Calculate movement vector (combine keyboard and motion input)
         let velocityX = 0;
         let velocityY = 0;
 
+        // Keyboard input
         if (leftPressed && !rightPressed) velocityX = -1;
         if (rightPressed && !leftPressed) velocityX = 1;
         if (upPressed && !downPressed) velocityY = -1;
         if (downPressed && !upPressed) velocityY = 1;
+
+        // Motion input (additive with keyboard, but motion takes priority if present)
+        if (Math.abs(motionInput.x) > 0 || Math.abs(motionInput.y) > 0) {
+            velocityX = motionInput.x;
+            velocityY = motionInput.y;
+        }
 
         // Normalize diagonal movement
         if (velocityX !== 0 && velocityY !== 0) {
@@ -763,6 +891,17 @@ class LabyrinthGame extends Phaser.Scene {
         // Reset timers
         this.gameStartTime = Date.now();
         this.ghostSpawnTimer = Date.now();
+    }
+
+    cleanupMediaPipe() {
+        // Clean up MediaPipe resources if needed
+        if (this.camera) {
+            this.camera.stop();
+        }
+        if (this.holistic) {
+            this.holistic.close();
+        }
+        this.motionControlEnabled = false;
     }
 
 

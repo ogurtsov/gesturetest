@@ -28,7 +28,24 @@
     <div id="win-message" style="display: none; color: #00ff00; font-size: 24px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
         🎉 You Win! 🎉
     </div>
+    
+    <!-- Motion control status indicator (hidden) -->
+    <div id="motion-status" style="display: none;">
+        <div>Motion Control: <span id="motion-indicator">Loading...</span></div>
+        <div style="font-size: 12px; margin-top: 4px;">Hold right hand visible to face</div>
+    </div>
+    
+    <!-- MediaPipe webcam setup (hidden) -->
+    <video id="input_video" style="display: none;" autoplay muted playsinline></video>
+    <canvas id="output_canvas" style="display: none;"></canvas>
+    
     <div id="game-container"></div>
+    
+    <!-- MediaPipe libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
     <script src="game.js"></script>
