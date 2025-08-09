@@ -1,8 +1,10 @@
 # Use nginx to serve the static files
 FROM nginx:alpine
 
-# Copy the game files to nginx html directory
-COPY . /usr/share/nginx/html/
+# Copy only the necessary game files to nginx html directory
+COPY index.html /usr/share/nginx/html/
+COPY game.js /usr/share/nginx/html/
+COPY assets/ /usr/share/nginx/html/assets/
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
