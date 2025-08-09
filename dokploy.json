@@ -1,0 +1,36 @@
+{
+  "name": "gesture-labyrinth-game",
+  "description": "Innovative gesture-controlled labyrinth game with MediaPipe motion tracking",
+  "type": "application",
+  "framework": "static",
+  "buildSettings": {
+    "dockerFile": "./Dockerfile",
+    "dockerContext": "."
+  },
+  "deploymentSettings": {
+    "port": 80,
+    "healthCheck": {
+      "enabled": true,
+      "path": "/",
+      "interval": 30,
+      "timeout": 5,
+      "retries": 3
+    }
+  },
+  "environmentVariables": {},
+  "domains": [
+    {
+      "domain": "videogame.5pointers.com",
+      "https": true,
+      "certificateType": "letsencrypt"
+    }
+  ],
+  "resources": {
+    "memory": "256Mi",
+    "cpu": "0.25"
+  },
+  "scaling": {
+    "minReplicas": 1,
+    "maxReplicas": 2
+  }
+}
