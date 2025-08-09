@@ -2,8 +2,6 @@ services:
   labyrinth-game:
     build: .
     container_name: gesture-labyrinth
-    ports:
-      - "8080:80"
     restart: unless-stopped
     environment:
       - NGINX_HOST=localhost
@@ -14,4 +12,10 @@ services:
       - "traefik.http.routers.labyrinth.entrypoints=websecure"
       - "traefik.http.routers.labyrinth.tls.certresolver=letsencrypt"
       - "traefik.http.services.labyrinth.loadbalancer.server.port=80"
+    networks:
+      - dokploy
+
+networks:
+  dokploy:
+    external: true
 
