@@ -2,6 +2,11 @@ class LabyrinthGame extends Phaser.Scene {
     constructor() {
         super({ key: 'LabyrinthGame' });
         
+        // Initialize all game state
+        this.initializeGameState();
+    }
+
+    initializeGameState() {
         // Game state
         this.score = 0;
         this.gameStartTime = 0;
@@ -48,6 +53,23 @@ class LabyrinthGame extends Phaser.Scene {
     }
 
     create() {
+        // Force reset all game state
+        this.gameWon = false;
+        this.score = 0;
+        
+        // Reset player state
+        this.playerX = 1;
+        this.playerY = 1;
+        this.isMoving = false;
+        this.targetX = 1;
+        this.targetY = 1;
+        
+        // Clear any existing timers
+        if (this.timer) {
+            clearInterval(this.timer);
+            this.timer = null;
+        }
+        
         // Calculate optimal maze dimensions for screen
         this.calculateMazeDimensions();
         
@@ -62,16 +84,20 @@ class LabyrinthGame extends Phaser.Scene {
         // Spawn the first ghost
         this.spawnGhost();
         
-        // Set up controls
+        // Set up controls (recreate to ensure clean state)
         this.cursors = this.input.keyboard.createCursorKeys();
         this.wasdKeys = this.input.keyboard.addKeys('W,S,A,D');
         
-        // Start the timer
+        // Ensure all keys are in released state
+        this.input.keyboard.resetKeys();
+        
+        // Set start time (for internal tracking)
         this.gameStartTime = Date.now();
-        this.startTimer();
         
         // Reset ghost spawn timer
         this.ghostSpawnTimer = Date.now();
+        
+
     }
 
     calculateMazeDimensions() {
@@ -245,9 +271,6 @@ class LabyrinthGame extends Phaser.Scene {
         ghost.sprite.setStrokeStyle(2, 0x606060);
 
         this.ghosts.push(ghost);
-        
-        // Update ghost count display
-        document.getElementById('ghost-count').textContent = this.ghosts.length;
     }
 
     findValidSpawnPosition() {
@@ -289,8 +312,7 @@ class LabyrinthGame extends Phaser.Scene {
         // Check ghost collisions
         this.checkGhostCollisions();
 
-        // Update timer display
-        this.updateTimer();
+
     }
 
     handleMovement(delta) {
@@ -575,16 +597,13 @@ class LabyrinthGame extends Phaser.Scene {
         
         // Restart after 30 seconds
         this.time.delayedCall(30000, () => {
+            // Force a complete scene restart
             this.scene.restart();
         });
     }
 
     winGame() {
         this.gameWon = true;
-        this.score += 100;
-        
-        // Update score display
-        document.getElementById('score').textContent = this.score;
         
         // Show win message
         const winMessage = document.getElementById('win-message');
@@ -629,9 +648,6 @@ class LabyrinthGame extends Phaser.Scene {
         }
         this.ghosts = [];
         
-        // Update ghost count display
-        document.getElementById('ghost-count').textContent = 0;
-        
         // Recalculate maze dimensions (in case screen size changed)
         this.calculateMazeDimensions();
         
@@ -647,19 +663,6 @@ class LabyrinthGame extends Phaser.Scene {
         // Reset timers
         this.gameStartTime = Date.now();
         this.ghostSpawnTimer = Date.now();
-    }
-
-    startTimer() {
-        this.timer = setInterval(() => {
-            this.updateTimer();
-        }, 1000);
-    }
-
-    updateTimer() {
-        if (!this.gameWon) {
-            const elapsed = Math.floor((Date.now() - this.gameStartTime) / 1000);
-            document.getElementById('timer').textContent = elapsed;
-        }
     }
 
 

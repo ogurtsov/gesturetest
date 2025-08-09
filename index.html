@@ -31,34 +31,14 @@
             padding: 10px;
             border-radius: 5px;
         }
-        #instructions {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            color: #ccc;
-            font-size: 14px;
-            z-index: 100;
-            background-color: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            border-radius: 5px;
-        }
+
     </style>
 </head>
 <body>
     <div id="ui">
-        <div>Score: <span id="score">0</span></div>
-        <div>Time: <span id="timer">0</span>s</div>
-        <div>Ghosts: <span id="ghost-count">0</span></div>
         <div id="win-message" style="display: none; color: #00ff00; font-size: 24px; margin-top: 10px;">
             🎉 You Win! 🎉
         </div>
-    </div>
-    <div id="instructions">
-        <div><strong>Controls:</strong></div>
-        <div>Arrow Keys or WASD to move</div>
-        <div>🟡 Player | 🟢 Goal | ⬜ Walls | 👻 Ghosts</div>
-        <div>Reach the green goal to win!</div>
-        <div>Avoid the ghosts!</div>
     </div>
     <div id="game-container"></div>
     
