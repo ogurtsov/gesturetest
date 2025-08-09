@@ -21,6 +21,14 @@ class LabyrinthGame extends Phaser.Scene {
         this.cursors = null;
         this.wasdKeys = null;
         
+        // Ghost system
+        this.ghosts = [];
+        this.maxGhosts = 10;
+        this.ghostSpawnTimer = 0;
+        this.ghostSpawnInterval = 60000; // 60 seconds in milliseconds
+        this.ghostSpeed = 100; // pixels per second (slower than player)
+        this.minSpawnDistance = 5; // minimum cells away from player
+        
         // Player position in maze coordinates
         this.playerX = 1;
         this.playerY = 1;
@@ -51,6 +59,9 @@ class LabyrinthGame extends Phaser.Scene {
         this.createPlayer();
         this.createGoal();
         
+        // Spawn the first ghost
+        this.spawnGhost();
+        
         // Set up controls
         this.cursors = this.input.keyboard.createCursorKeys();
         this.wasdKeys = this.input.keyboard.addKeys('W,S,A,D');
@@ -58,6 +69,9 @@ class LabyrinthGame extends Phaser.Scene {
         // Start the timer
         this.gameStartTime = Date.now();
         this.startTimer();
+        
+        // Reset ghost spawn timer
+        this.ghostSpawnTimer = Date.now();
     }
 
     calculateMazeDimensions() {
@@ -202,11 +216,78 @@ class LabyrinthGame extends Phaser.Scene {
         this.goal.setStrokeStyle(2, 0x00cc00);
     }
 
+    spawnGhost() {
+        if (this.ghosts.length >= this.maxGhosts) return;
+
+        // Find a valid spawn position away from player
+        const spawnPos = this.findValidSpawnPosition();
+        if (!spawnPos) return; // No valid position found
+
+        // Create ghost object
+        const ghost = {
+            x: spawnPos.x * this.cellSize + this.cellSize / 2,
+            y: spawnPos.y * this.cellSize + this.cellSize / 2,
+            mazeX: spawnPos.x,
+            mazeY: spawnPos.y,
+            sprite: null,
+            path: [],
+            pathIndex: 0,
+            lastPathUpdate: 0
+        };
+
+        // Create visual representation
+        ghost.sprite = this.add.circle(
+            ghost.x,
+            ghost.y,
+            this.cellSize / 4,
+            0x808080 // Grey color
+        );
+        ghost.sprite.setStrokeStyle(2, 0x606060);
+
+        this.ghosts.push(ghost);
+        
+        // Update ghost count display
+        document.getElementById('ghost-count').textContent = this.ghosts.length;
+    }
+
+    findValidSpawnPosition() {
+        const attempts = 100; // Maximum attempts to find a valid position
+        
+        for (let i = 0; i < attempts; i++) {
+            // Random position in maze
+            const x = Math.floor(Math.random() * this.mazeWidth);
+            const y = Math.floor(Math.random() * this.mazeHeight);
+            
+            // Check if position is valid (not a wall)
+            if (this.maze[y][x] !== 0) continue;
+            
+            // Check distance from player
+            const distance = Math.sqrt(
+                Math.pow(x - this.playerX, 2) + Math.pow(y - this.playerY, 2)
+            );
+            
+            if (distance >= this.minSpawnDistance) {
+                return { x, y };
+            }
+        }
+        
+        return null; // No valid position found
+    }
+
     update(time, delta) {
         if (this.gameWon) return;
 
         // Handle continuous movement
         this.handleMovement(delta);
+
+        // Handle ghost spawning
+        this.handleGhostSpawning();
+
+        // Update ghosts
+        this.updateGhosts(delta);
+
+        // Check ghost collisions
+        this.checkGhostCollisions();
 
         // Update timer display
         this.updateTimer();
@@ -300,6 +381,204 @@ class LabyrinthGame extends Phaser.Scene {
         return true;
     }
 
+    handleGhostSpawning() {
+        const currentTime = Date.now();
+        
+        if (currentTime - this.ghostSpawnTimer >= this.ghostSpawnInterval) {
+            this.spawnGhost();
+            this.ghostSpawnTimer = currentTime;
+        }
+    }
+
+    updateGhosts(delta) {
+        for (const ghost of this.ghosts) {
+            this.updateGhostAI(ghost, delta);
+        }
+    }
+
+    updateGhostAI(ghost, delta) {
+        const currentTime = Date.now();
+        
+        // Update path every 500ms for performance
+        if (currentTime - ghost.lastPathUpdate > 500) {
+            ghost.path = this.findPathToPlayer(ghost.mazeX, ghost.mazeY);
+            ghost.pathIndex = 0;
+            ghost.lastPathUpdate = currentTime;
+        }
+        
+        // Move ghost along path
+        if (ghost.path.length > 1 && ghost.pathIndex < ghost.path.length - 1) {
+            const currentNode = ghost.path[ghost.pathIndex];
+            const nextNode = ghost.path[ghost.pathIndex + 1];
+            
+            const targetX = nextNode.x * this.cellSize + this.cellSize / 2;
+            const targetY = nextNode.y * this.cellSize + this.cellSize / 2;
+            
+            // Calculate direction to target
+            const dx = targetX - ghost.x;
+            const dy = targetY - ghost.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > 2) {
+                // Move towards target
+                const moveDistance = this.ghostSpeed * (delta / 1000);
+                ghost.x += (dx / distance) * moveDistance;
+                ghost.y += (dy / distance) * moveDistance;
+                
+                // Update sprite position
+                ghost.sprite.x = ghost.x;
+                ghost.sprite.y = ghost.y;
+                
+                // Update maze coordinates
+                ghost.mazeX = Math.floor(ghost.x / this.cellSize);
+                ghost.mazeY = Math.floor(ghost.y / this.cellSize);
+            } else {
+                // Reached current target, move to next node
+                ghost.pathIndex++;
+            }
+        }
+    }
+
+    findPathToPlayer(startX, startY) {
+        // Simple A* pathfinding implementation
+        const openSet = [];
+        const closedSet = new Set();
+        const cameFrom = new Map();
+        const gScore = new Map();
+        const fScore = new Map();
+        
+        const start = `${startX},${startY}`;
+        const goal = `${this.playerX},${this.playerY}`;
+        
+        openSet.push({ x: startX, y: startY, key: start });
+        gScore.set(start, 0);
+        fScore.set(start, this.heuristic(startX, startY, this.playerX, this.playerY));
+        
+        while (openSet.length > 0) {
+            // Get node with lowest fScore
+            openSet.sort((a, b) => fScore.get(a.key) - fScore.get(b.key));
+            const current = openSet.shift();
+            
+            if (current.key === goal) {
+                // Reconstruct path
+                const path = [];
+                let currentKey = current.key;
+                
+                while (currentKey) {
+                    const [x, y] = currentKey.split(',').map(Number);
+                    path.unshift({ x, y });
+                    currentKey = cameFrom.get(currentKey);
+                }
+                
+                return path;
+            }
+            
+            closedSet.add(current.key);
+            
+            // Check neighbors
+            const neighbors = [
+                { x: current.x - 1, y: current.y },
+                { x: current.x + 1, y: current.y },
+                { x: current.x, y: current.y - 1 },
+                { x: current.x, y: current.y + 1 }
+            ];
+            
+            for (const neighbor of neighbors) {
+                const neighborKey = `${neighbor.x},${neighbor.y}`;
+                
+                // Skip if out of bounds or wall
+                if (neighbor.x < 0 || neighbor.x >= this.mazeWidth || 
+                    neighbor.y < 0 || neighbor.y >= this.mazeHeight ||
+                    this.maze[neighbor.y][neighbor.x] !== 0) {
+                    continue;
+                }
+                
+                if (closedSet.has(neighborKey)) continue;
+                
+                const tentativeGScore = gScore.get(current.key) + 1;
+                
+                if (!openSet.find(n => n.key === neighborKey)) {
+                    openSet.push({ x: neighbor.x, y: neighbor.y, key: neighborKey });
+                } else if (tentativeGScore >= gScore.get(neighborKey)) {
+                    continue;
+                }
+                
+                cameFrom.set(neighborKey, current.key);
+                gScore.set(neighborKey, tentativeGScore);
+                fScore.set(neighborKey, tentativeGScore + this.heuristic(neighbor.x, neighbor.y, this.playerX, this.playerY));
+            }
+        }
+        
+        return []; // No path found
+    }
+
+    heuristic(x1, y1, x2, y2) {
+        // Manhattan distance
+        return Math.abs(x1 - x2) + Math.abs(y1 - y2);
+    }
+
+    checkGhostCollisions() {
+        for (const ghost of this.ghosts) {
+            const distance = Math.sqrt(
+                Math.pow(ghost.x - this.player.x, 2) + 
+                Math.pow(ghost.y - this.player.y, 2)
+            );
+            
+            // If ghost touches player (within cell radius)
+            if (distance < this.cellSize / 2) {
+                this.gameOver();
+                return;
+            }
+        }
+    }
+
+    gameOver() {
+        this.gameWon = true; // Stop game updates
+        
+        // Create red overlay covering entire screen
+        const redOverlay = this.add.rectangle(
+            0, 0,
+            this.sys.game.config.width * 2,
+            this.sys.game.config.height * 2,
+            0xff0000 // Red color
+        );
+        redOverlay.setOrigin(0, 0);
+        redOverlay.setDepth(1000); // Ensure it's on top
+        
+        // Create "THE END" text
+        const gameOverText = this.add.text(
+            this.sys.game.config.width / 2,
+            this.sys.game.config.height / 2,
+            'THE END',
+            {
+                fontSize: '120px',
+                fill: '#ffffff',
+                fontFamily: 'Arial Black, Arial',
+                stroke: '#000000',
+                strokeThickness: 4,
+                align: 'center'
+            }
+        );
+        gameOverText.setOrigin(0.5);
+        gameOverText.setDepth(1001); // Above the red overlay
+        
+        // Add dramatic effect - make text pulse
+        this.tweens.add({
+            targets: gameOverText,
+            scaleX: 1.2,
+            scaleY: 1.2,
+            duration: 1000,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+        
+        // Restart after 30 seconds
+        this.time.delayedCall(30000, () => {
+            this.scene.restart();
+        });
+    }
+
     winGame() {
         this.gameWon = true;
         this.score += 100;
@@ -344,6 +623,15 @@ class LabyrinthGame extends Phaser.Scene {
         this.player.destroy();
         this.goal.destroy();
         
+        // Clear ghosts
+        for (const ghost of this.ghosts) {
+            ghost.sprite.destroy();
+        }
+        this.ghosts = [];
+        
+        // Update ghost count display
+        document.getElementById('ghost-count').textContent = 0;
+        
         // Recalculate maze dimensions (in case screen size changed)
         this.calculateMazeDimensions();
         
@@ -353,8 +641,12 @@ class LabyrinthGame extends Phaser.Scene {
         this.createPlayer();
         this.createGoal();
         
-        // Reset timer
+        // Spawn first ghost
+        this.spawnGhost();
+        
+        // Reset timers
         this.gameStartTime = Date.now();
+        this.ghostSpawnTimer = Date.now();
     }
 
     startTimer() {
